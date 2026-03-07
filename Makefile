@@ -11,6 +11,13 @@ SVSM_ARGS_TEST += --features ${FEATURES_TEST}
 XBUILD_ARGS_TEST += --feature ${FEATURES_TEST}
 endif
 
+FEATURES_TEST_ATTEST ?= vtpm,virtio-drivers,block,attest
+SVSM_ARGS_TEST_ATTEST += --no-default-features
+ifneq ($(FEATURES_TEST_ATTEST),)
+SVSM_ARGS_TEST_ATTEST += --features ${FEATURES_TEST_ATTEST}
+XBUILD_ARGS_TEST_ATTEST += --feature ${FEATURES_TEST_ATTEST}
+endif
+
 TEST_ARGS ?=
 
 CLIPPY_OPTIONS ?=
@@ -54,6 +61,7 @@ endif
 
 IGVM_FILES = bin/coconut-qemu.igvm bin/coconut-hyperv.igvm bin/coconut-vanadium.igvm
 IGVM_TEST_FILES = bin/coconut-test-qemu.igvm bin/coconut-test-hyperv.igvm bin/coconut-test-vanadium.igvm
+IGVM_TEST_ATTEST_FILES = bin/coconut-test-qemu-attest.igvm
 IGVMBUILDER = "target/${TARGET_PATH}/igvmbuilder"
 IGVMBIN = bin/igvmbld
 IGVMMEASURE = "target/${TARGET_PATH}/igvmmeasure"
@@ -104,6 +112,9 @@ bin/coconut-vanadium.igvm:
 bin/coconut-test-qemu.igvm:
 	cargo xbuild $(XBUILD_ARGS_TEST) ./configs/test/qemu-test-target.json
 
+bin/coconut-test-qemu-attest.igvm:
+	cargo xbuild $(XBUILD_ARGS_TEST_ATTEST) ./configs/test/qemu-test-attest-target.json
+
 bin/coconut-test-hyperv.igvm:
 	cargo xbuild $(XBUILD_ARGS_TEST) ./configs/test/hyperv-test-target.json
 
@@ -117,6 +128,9 @@ test-igvm: $(IGVM_TEST_FILES)
 
 test-in-svsm: bin/coconut-test-qemu.igvm $(IGVMMEASUREBIN)
 	./scripts/test-in-svsm.sh $(TEST_ARGS)
+
+test-in-svsm-attest: $(IGVM_TEST_ATTEST_FILES) $(IGVMMEASUREBIN) $(APROXYBIN)
+	TEST_IGVM=$(CURDIR)/bin/coconut-test-qemu-attest.igvm ./scripts/test-in-svsm-attest.sh $(TEST_ARGS)
 
 test-in-hyperv: bin/coconut-test-hyperv.igvm
 
@@ -204,4 +218,4 @@ clean:
 
 distclean: clean
 
-.PHONY: test clean clippy bin/stage2.bin bin/svsm-kernel.elf bin/test-kernel.elf stage1_elf_full stage1_elf_trampoline stage1_elf_test distclean $(APROXYBIN) $(IGVM_FILES) $(IGVM_TEST_FILES)
+.PHONY: test clean clippy bin/stage2.bin bin/svsm-kernel.elf bin/test-kernel.elf stage1_elf_full stage1_elf_trampoline stage1_elf_test distclean $(APROXYBIN) $(IGVM_FILES) $(IGVM_TEST_FILES) $(IGVM_TEST_ATTEST_FILES) test-in-svsm-attest
