@@ -257,6 +257,17 @@ Unit tests can be run inside the SVSM by
 QEMU=/path/to/qemu make test-in-svsm
 ```
 
+Attestation can be exercised in the same test infrastructure by running
+the attest-enabled test image together with `kbs-test` and `aproxy`:
+
+```shell
+git clone https://github.com/coconut-svsm/kbs-test.git ../kbs-test
+KBS_TEST_DIR=../kbs-test QEMU=/path/to/qemu make test-in-svsm-attest TEST_ARGS=--nocc
+```
+
+You can replace `KBS_TEST_DIR` with `KBS_TEST_BIN=/path/to/kbs-test` if you
+already have a `kbs-test` binary.
+
 Note: to compile the test kernel used for unit tests, we use the nightly
 toolchain, so if the test kernel build fails, try installing the
 `x86_64-unknown-none` target for the nightly toolchain via your distro or
