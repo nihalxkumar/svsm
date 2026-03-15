@@ -355,3 +355,190 @@ fn hash(
 
     try_to_vec(&sha.finalize()).or(Err(AttestationError::VecAlloc))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+    use cocoon_tpm_tpm2_interface::{Tpm2bEccParameter, TpmBuffer};
+
+    fn make_ecc_point(x: &[u8], y: &[u8]) -> TpmsEccPoint<'static> {
+        TpmsEccPoint {
+            x: Tpm2bEccParameter {
+                buffer: TpmBuffer::Owned(x.to_vec()),
+            },
+            y: Tpm2bEccParameter {
+                buffer: TpmBuffer::Owned(y.to_vec()),
+            },
+        }
+    }
+
+    // --- AttestationError → SvsmError conversion ---
+
+    #[test]
+    fn test_attestation_error_converts_to_svsm_error() {
+        let err: SvsmError = AttestationError::UnsupportedTee.into();
+        assert!(matches!(err, SvsmError::TeeAttestation(AttestationError::UnsupportedTee)));
+
+        let err: SvsmError = AttestationError::Failed.into();
+        assert!(matches!(err, SvsmError::TeeAttestation(AttestationError::Failed)));
+
+        let err: SvsmError = AttestationError::ProxyRead.into();
+        assert!(matches!(err, SvsmError::TeeAttestation(AttestationError::ProxyRead)));
+    }
+
+    // --- hash() function tests ---
+
+    #[test]
+    fn test_hash_empty_params() {
+        let response = NegotiationResponse {
+            challenge: vec![0xaa; 32],
+            params: vec![],
+        };
+        let pub_key = make_ecc_point(&[1, 2, 3], &[4, 5, 6]);
+
+        let result = hash(&response, &pub_key).unwrap();
+        // With no params, the hash is SHA-512 of empty input
+        let expected = Sha512::digest([]);
+        assert_eq!(result, expected.as_slice());
+    }
+
+    #[test]
+    fn test_hash_challenge_only() {
+        let challenge = vec![0xbb; 32];
+        let response = NegotiationResponse {
+            challenge: challenge.clone(),
+            params: vec![NegotiationParam::Challenge],
+        };
+        let pub_key = make_ecc_point(&[1, 2, 3], &[4, 5, 6]);
+
+        let result = hash(&response, &pub_key).unwrap();
+
+        let mut sha = Sha512::new();
+        sha.update(&challenge);
+        let expected = sha.finalize();
+        assert_eq!(result, expected.as_slice());
+    }
+
+    #[test]
+    fn test_hash_ec_public_key_only() {
+        let x = vec![0x01, 0x02, 0x03];
+        let y = vec![0x04, 0x05, 0x06];
+        let response = NegotiationResponse {
+            challenge: vec![0xcc; 16],
+            params: vec![NegotiationParam::EcPublicKeyBytes],
+        };
+        let pub_key = make_ecc_point(&x, &y);
+
+        let result = hash(&response, &pub_key).unwrap();
+
+        let mut sha = Sha512::new();
+        sha.update(&x);
+        sha.update(&y);
+        let expected = sha.finalize();
+        assert_eq!(result, expected.as_slice());
+    }
+
+    #[test]
+    fn test_hash_challenge_then_ec_key() {
+        let challenge = vec![0xdd; 48];
+        let x = vec![0x10; 66];
+        let y = vec![0x20; 66];
+        let response = NegotiationResponse {
+            challenge: challenge.clone(),
+            params: vec![
+                NegotiationParam::Challenge,
+                NegotiationParam::EcPublicKeyBytes,
+            ],
+        };
+        let pub_key = make_ecc_point(&x, &y);
+
+        let result = hash(&response, &pub_key).unwrap();
+
+        let mut sha = Sha512::new();
+        sha.update(&challenge);
+        sha.update(&x);
+        sha.update(&y);
+        let expected = sha.finalize();
+        assert_eq!(result, expected.as_slice());
+    }
+
+    #[test]
+    fn test_hash_ec_key_then_challenge() {
+        let challenge = vec![0xee; 24];
+        let x = vec![0x30; 10];
+        let y = vec![0x40; 10];
+        let response = NegotiationResponse {
+            challenge: challenge.clone(),
+            params: vec![
+                NegotiationParam::EcPublicKeyBytes,
+                NegotiationParam::Challenge,
+            ],
+        };
+        let pub_key = make_ecc_point(&x, &y);
+
+        let result = hash(&response, &pub_key).unwrap();
+
+        let mut sha = Sha512::new();
+        sha.update(&x);
+        sha.update(&y);
+        sha.update(&challenge);
+        let expected = sha.finalize();
+        assert_eq!(result, expected.as_slice());
+    }
+
+    #[test]
+    fn test_hash_returns_64_bytes() {
+        let response = NegotiationResponse {
+            challenge: vec![0xff; 32],
+            params: vec![NegotiationParam::Challenge],
+        };
+        let pub_key = make_ecc_point(&[0], &[0]);
+
+        let result = hash(&response, &pub_key).unwrap();
+        assert_eq!(result.len(), 64); // SHA-512 output
+    }
+
+    #[test]
+    fn test_hash_deterministic() {
+        let response = NegotiationResponse {
+            challenge: vec![0x42; 32],
+            params: vec![
+                NegotiationParam::Challenge,
+                NegotiationParam::EcPublicKeyBytes,
+            ],
+        };
+        let pub_key = make_ecc_point(&[1, 2, 3], &[4, 5, 6]);
+
+        let result1 = hash(&response, &pub_key).unwrap();
+        let result2 = hash(&response, &pub_key).unwrap();
+        assert_eq!(result1, result2);
+    }
+
+    #[test]
+    fn test_hash_different_order_produces_different_result() {
+        let challenge = vec![0x42; 32];
+        let x = vec![0x01; 10];
+        let y = vec![0x02; 10];
+        let pub_key = make_ecc_point(&x, &y);
+
+        let response_chal_first = NegotiationResponse {
+            challenge: challenge.clone(),
+            params: vec![
+                NegotiationParam::Challenge,
+                NegotiationParam::EcPublicKeyBytes,
+            ],
+        };
+        let response_key_first = NegotiationResponse {
+            challenge: challenge.clone(),
+            params: vec![
+                NegotiationParam::EcPublicKeyBytes,
+                NegotiationParam::Challenge,
+            ],
+        };
+
+        let hash1 = hash(&response_chal_first, &pub_key).unwrap();
+        let hash2 = hash(&response_key_first, &pub_key).unwrap();
+        assert_ne!(hash1, hash2);
+    }
+}
