@@ -13,6 +13,7 @@ SVSM_DIR="$SCRIPT_DIR/.."
 
 : "${TEST_IGVM:=$SVSM_DIR/bin/coconut-test-qemu-attest.igvm}"
 : "${KBS_TEST_URL:=http://127.0.0.1:8080}"
+# Test-only placeholder secret; not used in production.
 : "${KBS_TEST_SECRET:=00112233445566778899aabbccddeeff}"
 : "${KBS_TEST_STARTUP_TIMEOUT:=300}"
 : "${APROXY_STARTUP_TIMEOUT:=30}"
@@ -150,10 +151,10 @@ fi
 set +e
 TEST_IGVM="$TEST_IGVM" \
     "$SCRIPT_DIR/test-in-svsm.sh" \
-    "${TEST_IN_SVSM_ARGS[@]}" \
+    ${TEST_IN_SVSM_ARGS[@]+"${TEST_IN_SVSM_ARGS[@]}"} \
     -- \
     --aproxy "$APROXY_SOCKET" \
-    "${LAUNCH_GUEST_ARGS[@]}" 2>&1 | tee "$SVSM_LOG"
+    ${LAUNCH_GUEST_ARGS[@]+"${LAUNCH_GUEST_ARGS[@]}"} 2>&1 | tee "$SVSM_LOG"
 SVSM_EXIT=${PIPESTATUS[0]}
 set -e
 
